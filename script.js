@@ -81,6 +81,8 @@ class App {
   #mapZoomLevel = 13;
   #mapEvent;
   #workouts = [];
+  #id;
+  #edit;
 
   constructor() {
     // Get user's position
@@ -156,47 +158,71 @@ class App {
       inputs.every(inp => Number.isFinite(inp));
     const allPositive = (...inputs) => inputs.every(inp => inp > 0);
 
-    e.preventDefault();
-
     // Get data from form
     const type = inputType.value;
     const distance = +inputDistance.value;
     const duration = +inputDuration.value;
-    const { lat, lng } = this.#mapEvent.latlng;
     let workout;
 
-    // If workout running, create running object
-    if (type === 'running') {
-      const cadence = +inputCadence.value;
+    if (!this.#id) {
+      e.preventDefault();
+      const { lat, lng } = this.#mapEvent.latlng;
+      // If workout running, create running object
+      if (type === 'running') {
+        const cadence = +inputCadence.value;
 
-      // Check if data is valid
-      if (
-        // !Number.isFinite(distance) ||
-        // !Number.isFinite(duration) ||
-        // !Number.isFinite(cadence)
-        !validInputs(distance, duration, cadence) ||
-        !allPositive(distance, duration, cadence)
-      )
-        return alert('Inputs have to be positive numbers!');
+        // Check if data is valid
+        if (
+          // !Number.isFinite(distance) ||
+          // !Number.isFinite(duration) ||
+          // !Number.isFinite(cadence)
+          !validInputs(distance, duration, cadence) ||
+          !allPositive(distance, duration, cadence)
+        )
+          return alert('Inputs have to be positive numbers!');
 
-      workout = new Running([lat, lng], distance, duration, cadence);
+        workout = new Running([lat, lng], distance, duration, cadence);
+      }
+
+      // If workout cycling, create cycling object
+      if (type === 'cycling') {
+        const elevation = +inputElevation.value;
+
+        if (
+          !validInputs(distance, duration, elevation) ||
+          !allPositive(distance, duration)
+        )
+          return alert('Inputs have to be positive numbers!');
+
+        workout = new Cycling([lat, lng], distance, duration, elevation);
+      }
+
+      // Add new object to workout array
+      this.#workouts.push(workout);
     }
-
-    // If workout cycling, create cycling object
-    if (type === 'cycling') {
-      const elevation = +inputElevation.value;
-
-      if (
-        !validInputs(distance, duration, elevation) ||
-        !allPositive(distance, duration)
-      )
-        return alert('Inputs have to be positive numbers!');
-
-      workout = new Cycling([lat, lng], distance, duration, elevation);
+    if (this.#id) {
+      const index = this.#workouts.findIndex(work => work.id === this.#id);
+      if (this.#edit.type === 'running') {
+        const cadence = +inputCadence.value;
+        workout = { ...this.#edit, distance, duration, cadence };
+        this.#workouts[index] = workout;
+        console.log('running', workout);
+      }
+      if (this.#edit.type === 'cycling') {
+        const elevation = +inputElevation.value;
+        workout = {
+          ...this.#edit,
+          distance,
+          duration,
+          elevation,
+        };
+        this.#workouts[index] = workout;
+      }
+      this._hideForm();
+      this._setLocalStorage();
+      this._getLocalStorage();
+      return;
     }
-
-    // Add new object to workout array
-    this.#workouts.push(workout);
 
     // Render workout on map as marker
     this._renderWorkoutMarker(workout);
@@ -230,10 +256,14 @@ class App {
   }
 
   _renderWorkout(workout) {
-    console.log(workout.id);
     let html = `
       <li class="workout workout--${workout.type}" data-id="${workout.id}">
+        <div class="workout__container">
         <h2 class="workout__title">${workout.description}</h2>
+        <div class="workout__edit" data-edit="edit">
+        🖌
+        </div>
+        </div>
         <div class="workout__details">
           <span class="workout__icon">${
             workout.type === 'running' ? '🏃‍♂️' : '🚴‍♀️'
@@ -293,7 +323,30 @@ class App {
       work => work.id === workoutEl.dataset.id
     );
 
-    console.log(workout);
+    if (e.target.dataset.edit === 'edit') {
+      console.log(workout);
+      this.#id = workout.id;
+      this.#edit = workout;
+      inputDistance.value = workout.distance;
+      inputDuration.value = workout.duration;
+      if (workout.type === 'running') {
+        inputElevation.closest('.form__row').classList.add('form__row--hidden');
+        inputCadence
+          .closest('.form__row')
+          .classList.remove('form__row--hidden');
+        inputType.value = workout.type;
+        inputCadence.value = workout.cadence;
+      }
+      if (workout.type === 'cycling') {
+        inputElevation
+          .closest('.form__row')
+          .classList.remove('form__row--hidden');
+        inputCadence.closest('.form__row').classList.add('form__row--hidden');
+        inputType.value = workout.type;
+        inputElevation.value = workout.elevationGain;
+      }
+      form.classList.remove('hidden');
+    }
 
     this.#map.setView(workout.coords, this.#mapZoomLevel, {
       animate: true,
